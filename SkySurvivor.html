@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>飞机躲避游戏</title>
+<style>
+body {
+margin: 0;
+padding: 0;
+background: linear-gradient(135deg, #0f0f23, #1a1a3a);
+display: flex;
+justify-content: center;
+align-items: center;
+min-height: 100vh;
+font-family: Arial, sans-serif;
+overflow: hidden;
+touch-action: none;
+}
+
+
+#gameContainer {
+position: relative;
+width: 100vw;
+height: 100vh;
+max-width: 400px;
+max-height: 600px;
+background: radial-gradient(circle at center, #1a1a3a, #0f0f23);
+border: 2px solid #444;
+overflow: hidden;
+}
+
+#gameCanvas {
+display: block;
+background: transparent;
+width: 100%;
+height: 100%;
+}
+
+#ui {
+position: absolute;
+top: 20px;
+left: 20px;
+color: #fff;
+font-size: 20px;
+font-weight: bold;
+text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+z-index: 10;
+}
+
+#gameOver {
+position: absolute;
+top: 50%;
+left: 50%;
+transform: translate(-50%, -50%);
+background: rgba(0, 0, 0, 0.9);
+color: #fff;
+padding: 30px;
+border-radius: 15px;
+text-align: center;
+display: none;
+z-index: 20;
+}
+
+#gameOver h2 {
+margin: 0 0 20px 0;
+color: #ff6b6b;
+}
+
+#gameOver h2.newRecord {
+color: #44ff44;
+animation: glow 1s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+from { text-shadow: 0 0 10px #44ff44; }
+to { text-shadow: 0 0 20px #44ff44, 0 0 30px #44ff44; }
+}
+
+#bestRecord {
+font-weight: bold;
+color: #ffd700;
+}
+
+#restartBtn {
+background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+color: white;
+border: none;
+padding: 12px 24px;
+font-size: 18px;
+border-radius: 8px;
+cursor: pointer;
+margin-top: 15px;
+transition: transform 0.2s;
+}
+
+#restartBtn:hover {
+transform: scale(1.05);
+}
+
+#instructions {
+position: absolute;
+bottom: 20px;
+left: 20px;
+right: 20px;
+color: rgba(255, 255, 255, 0.7);
+font-size: 14px;
+z-index: 10;
+text-align: center;
+}
+</style>
+```
+
+</head>
+<body>
+<div id="gameContainer">
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+
+```
+<div id="ui">
+<div>时间: <span id="timeDisplay">0.0</span>s</div>
+<div>最高记录: <span id="bestTimeDisplay">0.0</span>s</div>
+<div>目标: 坚持20秒!</div>
+</div>
+
+<div id="gameOver">
+<h2 id="gameOverTitle">游戏结束!</h2>
+<p>你坚持了 <span id="finalTime">0</span> 秒</p>
+<p id="bestRecord">最高记录: <span id="bestTimeResult">0</span> 秒</p>
+<p id="achievement"></p>
+<button id="restartBtn">重新开始</button>
+</div>
+
+<div id="instructions">
+手指在屏幕上移动控制飞机方向<br>
+躲避子弹，坚持越久越好！
+</div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const timeDisplay = document.getElementById('timeDisplay');
+const bestTimeDisplay = document.getElementById('bestTimeDisplay');
+const gameOverDiv = document.getElementById('gameOver');
+const gameOverTitle = document.getElementById('gameOverTitle');
+const finalTimeSpan = document.getElementById('finalTime');
+const bestTimeResult = document.getElementById('bestTimeResult');
+const achievementP = document.getElementById('achievement');
+const restartBtn = document.getElementById('restartBtn');
+
+// 游戏状态
+let gameRunning = false;
+let gameTime = 0;
+let bestTime = parseFloat(localStorage.getItem('bestTime')) || 0; // 最高记录
+let isNewRecord = false; // 是否创造了新记录
+let player = {
+x: 200, // 画布中心 400/2
+y: 300, // 画布中心 600/2
+size: 12,
+speed: 4,
+vx: 0,
+vy: 0,
+alive: true
+};
+let bullets = [];
+let stars = [];
+let explosion = null;
+
+// 触摸控制
+let lastTouchX = null;
+let lastTouchY = null;
+let isTouching = false;
+
+// 创建星空背景
+function createStars() {
+stars = [];
+for (let i = 0; i < 60; i++) {
+stars.push({
+x: Math.random() * canvas.width,
+y: Math.random() * canvas.height,
+size: Math.random() * 2 + 0.5,
+opacity: Math.random() * 0.8 + 0.2
+});
+}
+}
+
+// 创建子弹
+function createBullet() {
+const side = Math.floor(Math.random() * 4); // 0:上, 1:右, 2:下, 3:左
+let bullet = {
+size: 3,
+speed: 1.5 + Math.random() * 1.5
+};
+
+switch (side) {
+case 0: // 从上方
+bullet.x = Math.random() * canvas.width;
+bullet.y = -bullet.size;
+bullet.dx = (player.x - bullet.x) * 0.008;
+bullet.dy = bullet.speed;
+break;
+case 1: // 从右方
+bullet.x = canvas.width + bullet.size;
+bullet.y = Math.random() * canvas.height;
+bullet.dx = -bullet.speed;
+bullet.dy = (player.y - bullet.y) * 0.008;
+break;
+case 2: // 从下方
+bullet.x = Math.random() * canvas.width;
+bullet.y = canvas.height + bullet.size;
+bullet.dx = (player.x - bullet.x) * 0.008;
+bullet.dy = -bullet.speed;
+break;
+case 3: // 从左方
+bullet.x = -bullet.size;
+bullet.y = Math.random() * canvas.height;
+bullet.dx = bullet.speed;
+bullet.dy = (player.y - bullet.y) * 0.008;
+break;
+}
+
+bullets.push(bullet);
+}
+
+// 绘制星空
+function drawStars() {
+ctx.fillStyle = 'white';
+stars.forEach(star => {
+ctx.globalAlpha = star.opacity;
+ctx.beginPath();
+ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+ctx.fill();
+});
+ctx.globalAlpha = 1;
+}
+
+// 绘制玩家飞机
+function drawPlayer() {
+if (!player.alive) return;
+
+ctx.save();
+ctx.translate(player.x, player.y);
+
+// 飞机主体
+ctx.fillStyle = '#4a9eff';
+ctx.beginPath();
+ctx.moveTo(0, -player.size);
+ctx.lineTo(-player.size * 0.6, player.size * 0.8);
+ctx.lineTo(0, player.size * 0.4);
+ctx.lineTo(player.size * 0.6, player.size * 0.8);
+ctx.closePath();
+ctx.fill();
+
+// 飞机装饰
+ctx.fillStyle = '#ff6b6b';
+ctx.beginPath();
+ctx.arc(0, 0, player.size * 0.3, 0, Math.PI * 2);
+ctx.fill();
+
+ctx.restore();
+}
+
+// 绘制爆炸效果
+function drawExplosion() {
+if (!explosion) return;
+
+ctx.save();
+ctx.translate(explosion.x, explosion.y);
+
+// 爆炸的多个圆圈
+for (let i = 0; i < explosion.particles.length; i++) {
+const particle = explosion.particles[i];
+
+ctx.globalAlpha = particle.alpha;
+ctx.fillStyle = particle.color;
+ctx.beginPath();
+ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+ctx.fill();
+
+// 爆炸光晕效果
+ctx.shadowColor = particle.color;
+ctx.shadowBlur = particle.size * 2;
+ctx.beginPath();
+ctx.arc(particle.x, particle.y, particle.size * 0.5, 0, Math.PI * 2);
+ctx.fill();
+}
+
+ctx.restore();
+}
+
+// 绘制子弹
+function drawBullets() {
+ctx.fillStyle = '#ffaa00';
+bullets.forEach(bullet => {
+ctx.save();
+ctx.shadowColor = '#ffaa00';
+ctx.shadowBlur = 8;
+ctx.beginPath();
+ctx.arc(bullet.x, bullet.y, bullet.size, 0, Math.PI * 2);
+ctx.fill();
+ctx.restore();
+});
+}
+function createExplosion(x, y) {
+explosion = {
+x: x,
+y: y,
+timer: 0,
+duration: 120, // 2秒的爆炸动画
+particles: []
+};
+
+// 创建爆炸粒子
+const colors = ['#ff4444', '#ff8844', '#ffaa44', '#ffff44', '#ff6666'];
+for (let i = 0; i < 15; i++) {
+explosion.particles.push({
+x: (Math.random() - 0.5) * 20,
+y: (Math.random() - 0.5) * 20,
+vx: (Math.random() - 0.5) * 8,
+vy: (Math.random() - 0.5) * 8,
+size: Math.random() * 8 + 4,
+color: colors[Math.floor(Math.random() * colors.length)],
+alpha: 1,
+life: Math.random() * 60 + 60
+});
+}
+}
+
+// 更新爆炸效果
+function updateExplosion() {
+if (!explosion) return;
+
+explosion.timer++;
+
+// 更新每个爆炸粒子
+explosion.particles.forEach(particle => {
+particle.x += particle.vx;
+particle.y += particle.vy;
+particle.vx *= 0.98; // 空气阻力
+particle.vy *= 0.98;
+particle.life--;
+particle.alpha = Math.max(0, particle.life / 60);
+particle.size *= 0.99; // 粒子逐渐缩小
+});
+
+// 移除消失的粒子
+explosion.particles = explosion.particles.filter(p => p.life > 0);
+
+// 爆炸结束后显示游戏结束界面
+if (explosion.timer >= explosion.duration) {
+explosion = null;
+gameOverDiv.style.display = 'block';
+}
+}
+
+// 更新游戏逻辑
+function update() {
+// 如果有爆炸效果在播放，只更新爆炸
+if (explosion) {
+updateExplosion();
+return;
+}
+
+if (!gameRunning) return;
+
+gameTime += 1/60;
+timeDisplay.textContent = gameTime.toFixed(1);
+
+// 只有飞机存活时才移动
+if (player.alive) {
+// 应用飞机移动
+player.x += player.vx;
+player.y += player.vy;
+
+// 速度衰减
+player.vx *= 0.92;
+player.vy *= 0.92;
+
+// 边界限制
+player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
+player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+}
+
+// 创建子弹 (难度递增)
+const bulletFreq = Math.max(25 - Math.floor(gameTime * 2), 8);
+if (Math.random() < 1/bulletFreq) {
+createBullet();
+}
+
+// 更新子弹
+bullets = bullets.filter(bullet => {
+bullet.x += bullet.dx;
+bullet.y += bullet.dy;
+
+// 移除超出边界的子弹
+if (bullet.x < -30 || bullet.x > canvas.width + 30 ||
+bullet.y < -30 || bullet.y > canvas.height + 30) {
+return false;
+}
+
+// 碰撞検測（只有飞机存活时才检测）
+if (player.alive) {
+const dist = Math.sqrt(
+(bullet.x - player.x) ** 2 + (bullet.y - player.y) ** 2
+);
+if (dist < player.size + bullet.size - 2) {
+// 飞机被击中，先保存最终时间再创建爆炸效果
+player.alive = false;
+gameRunning = false;
+gameOver(); // 先调用gameOver保存时间
+createExplosion(player.x, player.y);
+return false;
+}
+}
+
+return true;
+});
+}
+
+// 渲染游戏
+function render() {
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+drawStars();
+drawPlayer();
+drawBullets();
+drawExplosion(); // 爆炸效果
+}
+
+// 游戏循环
+function gameLoop() {
+update();
+render();
+requestAnimationFrame(gameLoop);
+}
+
+// 游戏结束
+function gameOver() {
+const currentTime = parseFloat(gameTime.toFixed(1));
+finalTimeSpan.textContent = currentTime;
+
+// 检查是否创造新记录
+if (currentTime > bestTime) {
+bestTime = currentTime;
+isNewRecord = true;
+// 保存到本地存储
+localStorage.setItem('bestTime', bestTime.toString());
+// 更新显示
+bestTimeDisplay.textContent = bestTime.toFixed(1);
+}
+
+// 显示最高记录
+bestTimeResult.textContent = bestTime.toFixed(1);
+
+// 设置标题和成就文本
+if (isNewRecord) {
+gameOverTitle.textContent = '🎉 新記録達成！';
+gameOverTitle.className = 'newRecord';
+} else {
+gameOverTitle.textContent = 'ゲーム終了!';
+gameOverTitle.className = '';
+}
+
+let achievement = '';
+if (isNewRecord && currentTime >= 20) {
+achievement = '🏆 新記録で20秒突破！素晴らしい！';
+} else if (isNewRecord) {
+achievement = '⭐ 新記録達成！おめでとう！';
+} else if (currentTime >= 20) {
+achievement = '🎉 おめでとう！20秒突破！';
+} else if (currentTime >= 15) {
+achievement = '👏 素晴らしい！もう少しで20秒！';
+} else if (currentTime >= 10) {
+achievement = '👍 良い記録！';
+} else {
+achievement = '💪 練習を続けよう！';
+}
+
+achievementP.textContent = achievement;
+// 不立即显示，等爆炸动画结束后显示
+}
+
+// 开始游戏
+function startGame() {
+gameRunning = true;
+gameTime = 0;
+isNewRecord = false; // 重置新记录标志
+// 确保从画布正中心开始
+player.x = canvas.width / 2; // 200
+player.y = canvas.height / 2; // 300
+player.vx = 0;
+player.vy = 0;
+player.alive = true; // 重置飞机状态
+bullets = [];
+explosion = null; // 清除爆炸效果
+lastTouchX = null;
+lastTouchY = null;
+isTouching = false;
+gameOverDiv.style.display = 'none';
+}
+
+// 获取触摸位置
+function getTouchPos(e) {
+const rect = canvas.getBoundingClientRect();
+const touch = e.touches[0] || e.changedTouches[0];
+return {
+x: (touch.clientX - rect.left) * (canvas.width / rect.width),
+y: (touch.clientY - rect.top) * (canvas.height / rect.height)
+};
+}
+
+// 触摸事件 - 重新设计的控制
+canvas.addEventListener('touchstart', (e) => {
+if (!gameRunning || !player.alive) return;
+
+const pos = getTouchPos(e);
+lastTouchX = pos.x;
+lastTouchY = pos.y;
+isTouching = true;
+
+e.preventDefault();
+});
+
+canvas.addEventListener('touchmove', (e) => {
+if (!gameRunning || !isTouching || !player.alive) return;
+
+const pos = getTouchPos(e);
+
+if (lastTouchX !== null && lastTouchY !== null) {
+// 计算手指移动的方向和距离
+const deltaX = pos.x - lastTouchX;
+const deltaY = pos.y - lastTouchY;
+
+// 将手指移动转换为飞机速度
+const sensitivity = 0.3;
+player.vx += deltaX * sensitivity;
+player.vy += deltaY * sensitivity;
+
+// 限制最大速度
+const maxSpeed = player.speed;
+const currentSpeed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+if (currentSpeed > maxSpeed) {
+player.vx = (player.vx / currentSpeed) * maxSpeed;
+player.vy = (player.vy / currentSpeed) * maxSpeed;
+}
+}
+
+lastTouchX = pos.x;
+lastTouchY = pos.y;
+
+e.preventDefault();
+});
+
+canvas.addEventListener('touchend', (e) => {
+isTouching = false;
+lastTouchX = null;
+lastTouchY = null;
+e.preventDefault();
+});
+
+// 防止页面滚动
+document.addEventListener('touchmove', (e) => {
+e.preventDefault();
+}, { passive: false });
+
+// 重启按钮
+restartBtn.addEventListener('click', startGame);
+
+// 初始化
+createStars();
+// 显示最高记录
+bestTimeDisplay.textContent = bestTime.toFixed(1);
+startGame();
+gameLoop();
+</script>
+
+</body>
+</html>
