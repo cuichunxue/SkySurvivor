@@ -3,30 +3,30 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>飛行機回避ゲーム</title>
 <style>
 body {
 margin: 0;
 padding: 0;
 background: linear-gradient(135deg, #0f0f23, #1a1a3a);
-display: flex;
-justify-content: center;
-align-items: center;
-min-height: 100vh;
 font-family: Arial, sans-serif;
 overflow: hidden;
 touch-action: none;
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
 }
 
 #gameContainer {
-position: relative;
+position: fixed;
+top: 0;
+left: 0;
 width: 100vw;
 height: 100vh;
-max-width: 400px;
-max-height: 600px;
 background: radial-gradient(circle at center, #1a1a3a, #0f0f23);
-border: 2px solid #444;
 overflow: hidden;
 display: flex;
 justify-content: center;
@@ -36,9 +36,8 @@ align-items: center;
 #gameCanvas {
 display: block;
 background: transparent;
-max-width: 100%;
-max-height: 100%;
-object-fit: contain;
+width: 100vw;
+height: 100vh;
 }
 
 #ui {
@@ -117,7 +116,7 @@ text-align: center;
 </head>
 <body>
 <div id="gameContainer">
-<canvas id="gameCanvas" width="400" height="600"></canvas>
+<canvas id="gameCanvas"></canvas>
 
 <div id="ui">
 <div>時間: <span id="timeDisplay">0.0</span>s</div>
@@ -151,7 +150,7 @@ const bestTimeResult = document.getElementById('bestTimeResult');
 const achievementP = document.getElementById('achievement');
 const restartBtn = document.getElementById('restartBtn');
 
-// 游戏状态
+// ゲーム状態
 let gameRunning = false;
 let gameTime = 0;
 let bestTime = parseFloat(localStorage.getItem('bestTime')) || 0;
@@ -169,15 +168,25 @@ let bullets = [];
 let stars = [];
 let explosion = null;
 
-// 触摸控制
+// タッチ制御
 let lastTouchX = null;
 let lastTouchY = null;
 let isTouching = false;
 
-// 创建星空背景
+// 初期化とキャンバスサイズ調整
+function initializeCanvas() {
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// プレイヤーの初期位置も画面サイズに合わせて調整
+player.x = canvas.width / 2;
+player.y = canvas.height / 2;
+}
+
+// 星空背景を作成
 function createStars() {
 stars = [];
-for (let i = 0; i < 60; i++) {
+for (let i = 0; i < Math.floor((canvas.width * canvas.height) / 8000); i++) {
 stars.push({
 x: Math.random() * canvas.width,
 y: Math.random() * canvas.height,
@@ -187,7 +196,7 @@ opacity: Math.random() * 0.8 + 0.2
 }
 }
 
-// 创建子弹
+// 弾を作成
 function createBullet() {
 const side = Math.floor(Math.random() * 4);
 let bullet = {
@@ -196,25 +205,25 @@ speed: 1.5 + Math.random() * 1.5
 };
 
 switch (side) {
-case 0: // 从上方
+case 0: // 上から
 bullet.x = Math.random() * canvas.width;
 bullet.y = -bullet.size;
 bullet.dx = (player.x - bullet.x) * 0.008;
 bullet.dy = bullet.speed;
 break;
-case 1: // 从右方
+case 1: // 右から
 bullet.x = canvas.width + bullet.size;
 bullet.y = Math.random() * canvas.height;
 bullet.dx = -bullet.speed;
 bullet.dy = (player.y - bullet.y) * 0.008;
 break;
-case 2: // 从下方
+case 2: // 下から
 bullet.x = Math.random() * canvas.width;
 bullet.y = canvas.height + bullet.size;
 bullet.dx = (player.x - bullet.x) * 0.008;
 bullet.dy = -bullet.speed;
 break;
-case 3: // 从左方
+case 3: // 左から
 bullet.x = -bullet.size;
 bullet.y = Math.random() * canvas.height;
 bullet.dx = bullet.speed;
@@ -225,7 +234,7 @@ break;
 bullets.push(bullet);
 }
 
-// 绘制星空
+// 星空を描画
 function drawStars() {
 ctx.fillStyle = 'white';
 stars.forEach(star => {
@@ -237,14 +246,14 @@ ctx.fill();
 ctx.globalAlpha = 1;
 }
 
-// 绘制玩家飞机
+// プレイヤー飛行機を描画
 function drawPlayer() {
 if (!player.alive) return;
 
 ctx.save();
 ctx.translate(player.x, player.y);
 
-// 飞机主体
+// 飛行機本体
 ctx.fillStyle = '#4a9eff';
 ctx.beginPath();
 ctx.moveTo(0, -player.size);
@@ -254,7 +263,7 @@ ctx.lineTo(player.size * 0.6, player.size * 0.8);
 ctx.closePath();
 ctx.fill();
 
-// 飞机装饰
+// 飛行機装飾
 ctx.fillStyle = '#ff6b6b';
 ctx.beginPath();
 ctx.arc(0, 0, player.size * 0.3, 0, Math.PI * 2);
@@ -263,7 +272,7 @@ ctx.fill();
 ctx.restore();
 }
 
-// 创建爆炸效果
+// 爆発エフェクトを作成
 function createExplosion(x, y) {
 explosion = {
 x: x,
@@ -288,7 +297,7 @@ life: Math.random() * 60 + 60
 }
 }
 
-// 绘制爆炸效果
+// 爆発エフェクトを描画
 function drawExplosion() {
 if (!explosion) return;
 
@@ -314,7 +323,7 @@ ctx.fill();
 ctx.restore();
 }
 
-// 绘制子弹
+// 弾を描画
 function drawBullets() {
 ctx.fillStyle = '#ffaa00';
 bullets.forEach(bullet => {
@@ -328,7 +337,7 @@ ctx.restore();
 });
 }
 
-// 更新爆炸效果
+// 爆発エフェクトを更新
 function updateExplosion() {
 if (!explosion) return;
 
@@ -352,7 +361,7 @@ gameOverDiv.style.display = 'block';
 }
 }
 
-// 更新游戏逻辑
+// ゲームロジックを更新
 function update() {
 if (explosion) {
 updateExplosion();
@@ -406,7 +415,7 @@ return true;
 });
 }
 
-// 渲染游戏
+// ゲームを描画
 function render() {
 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -416,14 +425,14 @@ drawBullets();
 drawExplosion();
 }
 
-// 游戏循环
+// ゲームループ
 function gameLoop() {
 update();
 render();
 requestAnimationFrame(gameLoop);
 }
 
-// 游戏结束
+// ゲーム終了
 function gameOver() {
 const currentTime = parseFloat(gameTime.toFixed(1));
 finalTimeSpan.textContent = currentTime;
@@ -463,7 +472,7 @@ achievement = '💪 練習を続けよう！';
 achievementP.textContent = achievement;
 }
 
-// 开始游戏
+// ゲーム開始
 function startGame() {
 gameRunning = true;
 gameTime = 0;
@@ -479,9 +488,10 @@ lastTouchX = null;
 lastTouchY = null;
 isTouching = false;
 gameOverDiv.style.display = 'none';
+createStars(); // 画面サイズ変更時に星も再生成
 }
 
-// 获取触摸位置
+// タッチ位置を取得
 function getTouchPos(e) {
 const rect = canvas.getBoundingClientRect();
 const touch = e.touches[0] || e.changedTouches[0];
@@ -491,7 +501,7 @@ y: (touch.clientY - rect.top) * (canvas.height / rect.height)
 };
 }
 
-// 触摸事件
+// タッチイベント
 canvas.addEventListener('touchstart', (e) => {
 if (!gameRunning || !player.alive) return;
 
@@ -537,15 +547,22 @@ lastTouchY = null;
 e.preventDefault();
 });
 
-// 防止页面滚动
+// ページスクロールを防止
 document.addEventListener('touchmove', (e) => {
 e.preventDefault();
 }, { passive: false });
 
-// 重启按钮
+// ウィンドウサイズ変更時の対応
+window.addEventListener('resize', () => {
+initializeCanvas();
+createStars();
+});
+
+// 再スタートボタン
 restartBtn.addEventListener('click', startGame);
 
-// 初始化
+// 初期化
+initializeCanvas();
 createStars();
 bestTimeDisplay.textContent = bestTime.toFixed(1);
 startGame();
